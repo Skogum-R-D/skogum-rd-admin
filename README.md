@@ -1,72 +1,78 @@
 # Skogum RD Admin Dashboard
 
-A Next.js 16.2 admin dashboard for monitoring Valkey agent activity.
+A Next.js 16.2 admin dashboard for monitoring real-time agent activity in Valkey.
 
-## Setup
+## Features
+- List all assignments (all `whiteboard:*` keys in Valkey)
+- Display plan summary, status, and created timestamp for each assignment
+- Expandable task list with task details
+- Auto-refresh every 5 seconds
 
+## Stack
+- Next.js 16.2 App Router + TypeScript
+- Tailwind CSS v3 + Framer Motion
+- ioredis for Valkey connection
+- Server-side data fetching via API routes with client-side polling
+
+## Pages
+- `/`: Dashboard with assignment cards sorted by most recent first
+
+## Configuration
+
+### Environment Variables
+Create a `.env.local` file in the root directory with the following variables:
+
+| Variable      | Description                          | Example                     |
+|---------------|--------------------------------------|-----------------------------|
+| `VALKEY_URL`  | URL of the Valkey server             | `redis://user:pass@host:port` |
+
+Example:
+```env
+VALKEY_URL=redis://localhost:6379
+```
+
+### Running Locally
 1. Install dependencies:
    ```bash
    npm install
    ```
-
-2. Create `.env.local` file with Valkey configuration:
-   ```env
-   VALKEY_URL=redis://localhost:6379
-   ```
-
-3. Start the development server:
+2. Start the development server:
    ```bash
    npm run dev
    ```
+3. Open [http://localhost:3003](http://localhost:3003) in your browser.
 
-The app will be available at `http://localhost:3003`.
-
-## Features
-
-- Real-time monitoring of Valkey `whiteboard:*` keys
-- Assignment cards with plan summary, status, and progress
-- Expandable task lists with detailed status
-- Auto-refresh every 5 seconds
-
-## Development
-
-### Adding new dependencies
-
-```bash
-npm install package-name
-```
-
-### Running tests
-
+### Running Tests
 ```bash
 npm test
 ```
 
-### Building for production
-
+### Building for Production
 ```bash
 npm run build
 npm start
 ```
 
-## Valkey Data Structure
+## API Routes
+- `GET /api/assignments`: Fetch all assignments
+- `GET /api/tasks?assignmentId=<id>`: Fetch tasks for a specific assignment
 
-The dashboard expects the following data structure in Valkey:
+## Error Handling
+The API routes return structured errors in the following format:
+```json
+{
+  "error": "ErrorCode",
+  "message": "Error message"
+}
+```
 
-- Keys: `whiteboard:<id>` (hash)
-- Fields:
-  - `plan_summary`: string
-  - `status`: "in_progress" | "completed" | "dispatched"
-  - `timestamp`: ISO 8601 datetime string
-  - `tasks`: JSON array of task objects
+Possible error codes:
+- `ValkeyUnavailable`: Failed to connect to Valkey
+- `InvalidQuery`: Missing or invalid query parameters
+- `InternalServerError`: An unexpected error occurred
 
-Task objects:
-- `id`: string
-- `type`: string
-- `agent`: string
-- `status`: string
-- `completed_at`: ISO 8601 datetime string (optional)
+## Logging
+The application uses `pino` for structured logging. Logs are written to the console in development and can be configured for production.
 
 ## License
-
 MIT
