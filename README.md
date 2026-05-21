@@ -1,78 +1,56 @@
-# Skogum RD Admin Dashboard
+# Skogum R&D Admin Dashboard
 
-A Next.js 16.2 admin dashboard for monitoring real-time agent activity in Valkey.
+Real-time admin dashboard for monitoring agent activity in Valkey.
 
 ## Features
 - List all assignments (all `whiteboard:*` keys in Valkey)
-- Display plan summary, status, and created timestamp for each assignment
-- Expandable task list with task details
-- Auto-refresh every 5 seconds
+- Per assignment:
+  - Plan summary
+  - Status
+  - Created timestamp
+  - Expandable task list with:
+    - Task ID
+    - Type
+    - Assigned agent
+    - Status (`pending`/`in_progress`/`completed`/`failed`)
+    - `completed_at`
+- Auto-refreshes every 5 seconds
 
 ## Stack
-- Next.js 16.2 App Router + TypeScript
+- Next.js 16.2 (App Router)
+- TypeScript
 - Tailwind CSS v3 + Framer Motion
-- ioredis for Valkey connection
-- Server-side data fetching via API routes with client-side polling
-
-## Pages
-- `/`: Dashboard with assignment cards sorted by most recent first
+- ioredis (for Valkey connection)
+- Server-side data fetching via API routes
+- Client-side polling
 
 ## Configuration
 
-### Environment Variables
-Create a `.env.local` file in the root directory with the following variables:
-
-| Variable      | Description                          | Example                     |
-|---------------|--------------------------------------|-----------------------------|
-| `VALKEY_URL`  | URL of the Valkey server             | `redis://user:pass@host:port` |
-
-Example:
-```env
-VALKEY_URL=redis://localhost:6379
-```
-
-### Running Locally
-1. Install dependencies:
-   ```bash
-   npm install
+1. Copy `.env.local`:
+   ```sh
+   cp .env.local .env.local
    ```
-2. Start the development server:
-   ```bash
-   npm run dev
+
+2. Set `VALKEY_URL` in `.env.local`:
+   ```env
+   VALKEY_URL=redis://your-valkey-host:6379
    ```
-3. Open [http://localhost:3003](http://localhost:3003) in your browser.
 
-### Running Tests
-```bash
-npm test
+   Default: `redis://localhost:6379`
+
+## Development
+
+Run locally:
+```sh
+npm install
+npm run dev
 ```
 
-### Building for Production
-```bash
-npm run build
-npm start
-```
+Open [http://localhost:3003](http://localhost:3003).
 
-## API Routes
-- `GET /api/assignments`: Fetch all assignments
-- `GET /api/tasks?assignmentId=<id>`: Fetch tasks for a specific assignment
+## Deployment
 
-## Error Handling
-The API routes return structured errors in the following format:
-```json
-{
-  "error": "ErrorCode",
-  "message": "Error message"
-}
-```
-
-Possible error codes:
-- `ValkeyUnavailable`: Failed to connect to Valkey
-- `InvalidQuery`: Missing or invalid query parameters
-- `InternalServerError`: An unexpected error occurred
-
-## Logging
-The application uses `pino` for structured logging. Logs are written to the console in development and can be configured for production.
+Ensure `VALKEY_URL` is set in your hosting provider's environment variables.
 
 ## License
 MIT
