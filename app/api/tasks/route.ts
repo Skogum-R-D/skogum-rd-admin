@@ -1,29 +1,34 @@
-import { NextResponse } from 'next/server';
-import { createClient } from 'redis';
+import { NextResponse } from "next/server";
+import Redis from "ioredis";
 
-const redisClient = createClient({
-  url: process.env.VALKEY_URL || 'redis://localhost:6379',
+const redis = new Redis(process.env.VALKEY_URL || "redis://localhost:6379", {
+  maxRetriesPerRequest: 3,
+  lazyConnect: true,
 });
 
-// Connect to Valkey
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log('Connected to Valkey');
-  } catch (err) {
-    console.error('Failed to connect to Valkey:', err);
-  }
-})();
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const assignmentId = searchParams.get("assignmentId");
 
-export async function GET() {
+  if (!assignmentId) {
+    return NextResponse.json({ error: "assignmentId query param required" }, { status: 400 });
+  }
+
   try {
-    const tasks = await redisClient.hGetAll('tasks');
-    return NextResponse.json({ data: tasks });
-  } catch (err) {
-    console.error('Error fetching tasks:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    const data = await redis.hgetall(`whiteboard:${assignmentId}`);
+    if (!data.plan) {
+      return NextResponse.json({ tasks: [] });
+    }
+    const plan = JSON.parse(data.plan);
+    const tasks = (plan.tasks || []).map((t: { id: string; type: string; assigned_to: string }) => ({
+      id: t.id,
+      type: t.type,
+      assignedAgent: t.assigned_to,
+      status: data[`task_${t.id}_status`] || "pending",
+      completedAt: data[`task_${t.id}_completed_at`] || null,
+    }));
+    return NextResponse.json({ tasks });
+  } catch (error) {
+    return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
   }
 }
