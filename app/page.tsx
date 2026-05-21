@@ -1,39 +1,40 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
+import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
 
-type Task = {
+interface Task {
   id: string;
   type: string;
-  agent: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  assigned_agent: string;
+  status: "pending" | "in_progress" | "completed" | "failed";
   completed_at?: string;
-};
+}
 
-type Assignment = {
+interface Assignment {
   id: string;
   plan_summary: string;
   status: string;
   created_at: string;
   tasks: Task[];
-};
+}
 
 export default function Dashboard() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const fetchAssignments = async () => {
+    setLoading(true);
     try {
-      const response = await fetch('/api/assignments');
+      const response = await fetch("/api/assignments");
       const data = await response.json();
-      setAssignments(data);
+      setAssignments(data.assignments);
     } catch (error) {
-      console.error('Failed to fetch assignments:', error);
+      console.error("Failed to fetch assignments:", error);
     } finally {
       setLoading(false);
     }
@@ -46,130 +47,154 @@ export default function Dashboard() {
   }, []);
 
   const toggleExpand = (id: string) => {
-    setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const getProgress = (tasks: Task[]) => {
-    const completed = tasks.filter(t => t.status === 'completed').length;
-    return { completed, total: tasks.length };
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "text-green-400";
+      case "in_progress":
+        return "text-blue-400";
+      case "failed":
+        return "text-red-400";
+      default:
+        return "text-gray-400";
+    }
   };
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <header className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold gradient-text">Agent Activity Dashboard</h1>
-        {loading && <Loader2 className="h-6 w-6 animate-spin text-primary" />}
-      </header>
+      <div className="max-w-7xl mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold gradient-text">Agent Activity Dashboard</h1>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchAssignments}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="ml-2">Refresh</span>
+          </Button>
+        </div>
 
-      <motion.div
-        className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
-        initial="hidden"
-        animate="show"
-        variants{{
-          hidden: {},
-          show: { transition: { staggerChildren: 0.1 } },
-        }}
-      >
-        {assignments.length === 0 ? (
-          <Card>
-            <CardContent className="text-center py-12">
-              <p className="text-muted-foreground">No assignments found</p>
-            </CardContent>
-          </Card>
+        {loading && assignments.length === 0 ? (
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : assignments.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            No assignments found.
+          </div>
         ) : (
-          assignments
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-            .map(assignment => {
-              const progress = getProgress(assignment.tasks);
-              const isExpanded = expanded[assignment.id];
+          <div className="grid gap-6">
+            {assignments.map((assignment) => {
+              const completedTasks = assignment.tasks.filter(
+                (task) => task.status === "completed"
+              ).length;
+              const totalTasks = assignment.tasks.length;
+              const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
               return (
-                <motion.div key={assignment.id} variants{{
-                  hidden: { opacity: 0, y: 20 },
-                  show: { opacity: 1, y: 0 },
-                }}>
-                  <Card>
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <CardTitle className="text-lg">Assignment {assignment.id}</CardTitle>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleExpand(assignment.id)}
-                        >
-                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-2">{assignment.plan_summary}</p>
-                    </CardHeader>
+                <Card key={assignment.id}>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg">Assignment {assignment.id}</CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {assignment.plan_summary}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className={`text-sm ${getStatusColor(assignment.status)}`}>
+                        {assignment.status}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleExpand(assignment.id)}
+                      >
+                        {expanded[assignment.id] ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </CardHeader>
 
-                    <CardContent>
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-muted-foreground">Progress</span>
-                          <span>{progress.completed}/{progress.total} tasks</span>
-                        </div>
-                        <div className="w-full bg-muted rounded-full h-2">
-                          <div
-                            className="bg-primary h-2 rounded-full"
-                            style={{ width: `${(progress.completed / progress.total) * 100}%` }}
-                          />
-                        </div>
+                  <CardContent>
+                    <div className="mb-4">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-muted-foreground">Progress</span>
+                        <span className="text-muted-foreground">
+                          {completedTasks}/{totalTasks} tasks
+                        </span>
                       </div>
-
-                      <div className="flex flex-wrap gap-2 mb-4">
-                        {assignment.tasks.map(task => (
-                          <span
-                            key={task.id}
-                            className="px-2 py-1 text-xs rounded-full bg-muted text-muted-foreground"
-                          >
-                            {task.agent}
-                          </span>
-                        ))}
-                      </div>
-
-                      {isExpanded && (
+                      <div className="w-full bg-gray-700 rounded-full h-2">
                         <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          transition={{ duration: 0.3 }}
-                        >
-                          <div className="space-y-3 mt-4 pt-4 border-t border-muted">
-                            {assignment.tasks.map(task => (
-                              <div key={task.id} className="flex justify-between items-center">
+                          className="bg-primary h-2 rounded-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progress}%` }}
+                          transition={{ duration: 0.5 }}
+                        />
+                      </div>
+                    </div>
+
+                    {expanded[assignment.id] && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        transition={{ duration: 0.3 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="space-y-4 mt-4">
+                          {assignment.tasks.map((task) => (
+                            <div
+                              key={task.id}
+                              className="p-3 rounded-lg border border-gray-700 bg-gray-800/50"
+                            >
+                              <div className="flex justify-between items-start">
                                 <div>
-                                  <p className="font-medium">{task.type}</p>
-                                  <p className="text-xs text-muted-foreground">Agent: {task.agent}</p>
+                                  <p className="font-medium text-primary">Task {task.id}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {task.type}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Agent: {task.assigned_agent}
+                                  </p>
                                 </div>
                                 <div className="text-right">
                                   <span
-                                    className={`px-2 py-1 text-xs rounded-full ${
-                                      task.status === 'completed' ? 'bg-green-500/20 text-green-400' :
-                                      task.status === 'in_progress' ? 'bg-blue-500/20 text-blue-400' :
-                                      task.status === 'failed' ? 'bg-red-500/20 text-red-400' :
-                                      'bg-muted text-muted-foreground'
-                                    }`}
+                                    className={`text-xs px-2 py-1 rounded-full ${getStatusColor(
+                                      task.status
+                                    )}`}
                                   >
                                     {task.status}
                                   </span>
                                   {task.completed_at && (
                                     <p className="text-xs text-muted-foreground mt-1">
-                                      {new Date(task.completed_at).toLocaleTimeString()}
+                                      Completed: {new Date(task.completed_at).toLocaleString()}
                                     </p>
                                   )}
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </motion.div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </CardContent>
+                </Card>
               );
-            })
+            })}
+          </div>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 }
