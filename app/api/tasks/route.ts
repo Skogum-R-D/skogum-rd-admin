@@ -1,56 +1,48 @@
-// app/api/tasks/route.ts
 import { NextResponse } from 'next/server';
-import { getTasks } from '@/lib/valkey';
-import { z } from 'zod';
-import pRetry from 'p-retry';
-
-const QuerySchema = z.object({
-  assignmentId: z.string(),
-  cursor: z.string().optional(),
-});
+import { getRedisClient, getTasks } from '@/lib/valkey';
+import { createErrorResponse } from '@/lib/api-errors';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  try {
-    // Validate query params
-    const { searchParams } = new URL(request.url);
-    const query = QuerySchema.parse(Object.fromEntries(searchParams));
+  const { searchParams } = new URL(request.url);
+  const assignmentId = searchParams.get('assignmentId');
 
-    // Fetch tasks with retry logic
-    const { tasks, hasMore, nextCursor } = await pRetry(
-      () => getTasks(query.assignmentId, query.cursor),
-      {
-        retries: 3,
-        minTimeout: 100,
-        maxTimeout: 1000,
-      }
+  if (!assignmentId) {
+    return createErrorResponse(
+      { code: 'InvalidQuery', message: 'Missing assignmentId parameter' },
+      400
     );
+  }
 
-    // Format response
-    return NextResponse.json({
-      data: { tasks, hasMore, nextCursor },
-      meta: {
-        timestamp: new Date().toISOString(),
-        valkeyUrl: process.env.VALKEY_URL?.replace(/:\/\/.+@/, '://***:***@'),
-      },
+  try {
+    const client = await getRedisClient();
+    await client.ping(); // Test connection
+
+    const tasks = await getTasks(assignmentId);
+
+    const response = NextResponse.json({
+      data: tasks,
     });
+
+    response.headers.set('Cache-Control', 'no-store, max-age=0');
+    return response;
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'InvalidQuery', details: error.flatten() },
-        { status: 400 }
-      );
+    logger.error({ error }, 'Failed to fetch tasks');
+
+    if (error instanceof Error) {
+      if (error.message.includes('Connection failed')) {
+        return createErrorResponse(
+          { code: 'ValkeyUnavailable', message: 'Failed to connect to Valkey' },
+          503
+        );
+      }
     }
-    if (error instanceof Error && error.message.includes('Valkey')) {
-      return NextResponse.json(
-        { error: 'ValkeyUnavailable', details: 'Failed to connect to Valkey' },
-        { status: 503 }
-      );
-    }
-    return NextResponse.json(
-      { error: 'InternalServerError' },
-      { status: 500 }
+
+    return createErrorResponse(
+      { code: 'InternalServerError', message: 'An unexpected error occurred' },
+      500
     );
   }
 }
