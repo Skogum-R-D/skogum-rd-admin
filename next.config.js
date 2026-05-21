@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  env: {
-    VALKEY_URL: process.env.VALKEY_URL || 'redis://localhost:6379',
+  swcMinify: true,
+  experimental: {
+    appDir: true,
   },
 };
 
