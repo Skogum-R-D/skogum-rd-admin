@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --legacy-peer-deps
 COPY . .
-RUN npm run build
+RUN npm run build && mkdir -p /app/public
 
 FROM node:20-alpine AS runner
 WORKDIR /app
