@@ -1,28 +1,21 @@
-import { NextResponse } from 'next/server';
-import { createClient } from 'redis';
+import { NextResponse } from "next/server";
+import Redis from "ioredis";
 
-const redisClient = createClient({
-  url: process.env.VALKEY_URL || 'redis://localhost:6379',
-});
-
-// Connect to Valkey
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log('Connected to Valkey');
-  } catch (err) {
-    console.error('Failed to connect to Valkey:', err);
-  }
-})();
+const redis = new Redis(process.env.VALKEY_URL || "redis://localhost:6379");
 
 export async function GET() {
   try {
-    const assignments = await redisClient.hGetAll('assignments');
-    return NextResponse.json({ data: assignments });
-  } catch (err) {
-    console.error('Error fetching assignments:', err);
+    const keys = await redis.keys("whiteboard:*");
+    const assignments = await Promise.all(
+      keys.map(async (key) => {
+        const data = await redis.hgetall(key);
+        return { id: key, ...data };
+      })
+    );
+    return NextResponse.json(assignments);
+  } catch (error) {
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: "Failed to fetch assignments" },
       { status: 500 }
     );
   }
