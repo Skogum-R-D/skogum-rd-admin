@@ -17,10 +17,14 @@ async function scanKeys(pattern: string): Promise<string[]> {
   return keys;
 }
 
-function parseStatus(raw: string | undefined): "pending" | "in_progress" | "completed" | "failed" {
+type TaskStatus = "pending" | "dispatched" | "in_progress" | "validating" | "completed" | "failed";
+
+function parseStatus(raw: string | undefined): TaskStatus {
   if (!raw) return "pending";
   if (raw === "completed") return "completed";
-  if (raw === "in_progress" || raw === "dispatched" || raw === "validating") return "in_progress";
+  if (raw === "in_progress") return "in_progress";
+  if (raw === "dispatched") return "dispatched";
+  if (raw === "validating") return "validating";
   if (raw.startsWith("failed") || raw.startsWith("qa_failed")) return "failed";
   return "pending";
 }
@@ -37,16 +41,29 @@ export async function GET() {
           const assignmentId = key.replace("whiteboard:", "");
 
           let tasks: object[] = [];
+          let latestActivity: string | null = null;
+
           if (data.plan) {
             try {
               const plan = JSON.parse(data.plan);
-              tasks = (plan.tasks || []).map((t: { id: string; type: string; assigned_to: string }) => ({
-                id: t.id,
-                type: t.type,
-                assignedAgent: t.assigned_to,
-                status: parseStatus(data[`task_${t.id}_status`]),
-                completedAt: data[`task_${t.id}_completed_at`] || null,
-              }));
+              tasks = (plan.tasks || []).map((t: {
+                id: string; type: string; assigned_to: string;
+                description: string; depends_on: string[];
+              }) => {
+                const completedAt = data[`task_${t.id}_completed_at`] || null;
+                if (completedAt && (!latestActivity || completedAt > latestActivity)) {
+                  latestActivity = completedAt;
+                }
+                return {
+                  id: t.id,
+                  type: t.type,
+                  assignedAgent: t.assigned_to,
+                  description: t.description || "",
+                  dependsOn: t.depends_on || [],
+                  status: parseStatus(data[`task_${t.id}_status`]),
+                  completedAt,
+                };
+              });
             } catch {}
           }
 
@@ -55,6 +72,7 @@ export async function GET() {
             planSummary: data.plan_summary || "",
             status: data.status || "unknown",
             createdAt: data.created_at || "",
+            latestActivity,
             tasks,
           };
         })
