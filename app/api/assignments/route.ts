@@ -1,62 +1,51 @@
-// app/api/assignments/route.ts
 import { NextResponse } from 'next/server';
-import { scanWhiteboardKeys, getAssignmentWithTasks } from '@/lib/valkey';
-import { z } from 'zod';
-import pRetry from 'p-retry';
-
-const QuerySchema = z.object({
-  cursor: z.string().optional(),
-});
+import { getRedisClient, scanWhiteboardKeys, getAssignmentWithTasks } from '@/lib/valkey';
+import { createErrorResponse } from '@/lib/api-errors';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const cursor = searchParams.get('cursor') || '0';
+
   try {
-    // Validate query params
-    const { searchParams } = new URL(request.url);
-    const query = QuerySchema.parse(Object.fromEntries(searchParams));
+    const client = await getRedisClient();
+    await client.ping(); // Test connection
 
-    // Fetch data with retry logic
-    const keys = await pRetry(() => scanWhiteboardKeys(), {
-      retries: 3,
-      minTimeout: 100,
-      maxTimeout: 1000,
-    });
-
+    const keys = await scanWhiteboardKeys();
     const assignments = await Promise.all(
-      keys.map((key) => 
-        pRetry(() => getAssignmentWithTasks(key), {
-          retries: 3,
-          minTimeout: 100,
-          maxTimeout: 1000,
-        })
-      )
+      keys.map(async (key) => {
+        const assignmentId = key.replace('whiteboard:', '');
+        const data = await getAssignmentWithTasks(assignmentId);
+        return data;
+      })
     );
 
-    // Format response
-    return NextResponse.json({
-      data: { assignments },
-      meta: {
-        timestamp: new Date().toISOString(),
-        valkeyUrl: process.env.VALKEY_URL?.replace(/:\/\/.+@/, '://***:***@'),
-      },
+    const validAssignments = assignments.filter((assignment) => assignment !== null);
+
+    const response = NextResponse.json({
+      data: validAssignments,
+      cursor: '0', // Placeholder for pagination
     });
+
+    response.headers.set('Cache-Control', 'no-store, max-age=0');
+    return response;
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'InvalidQuery', details: error.flatten() },
-        { status: 400 }
-      );
+    logger.error({ error }, 'Failed to fetch assignments');
+
+    if (error instanceof Error) {
+      if (error.message.includes('Connection failed')) {
+        return createErrorResponse(
+          { code: 'ValkeyUnavailable', message: 'Failed to connect to Valkey' },
+          503
+        );
+      }
     }
-    if (error instanceof Error && error.message.includes('Valkey')) {
-      return NextResponse.json(
-        { error: 'ValkeyUnavailable', details: 'Failed to connect to Valkey' },
-        { status: 503 }
-      );
-    }
-    return NextResponse.json(
-      { error: 'InternalServerError' },
-      { status: 500 }
+
+    return createErrorResponse(
+      { code: 'InternalServerError', message: 'An unexpected error occurred' },
+      500
     );
   }
 }
