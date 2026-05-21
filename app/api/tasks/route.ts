@@ -1,48 +1,29 @@
 import { NextResponse } from 'next/server';
-import { getRedisClient, getTasks } from '@/lib/valkey';
-import { createErrorResponse } from '@/lib/api-errors';
-import { logger } from '@/lib/logger';
+import { createClient } from 'redis';
 
-export const dynamic = 'force-dynamic';
+const redisClient = createClient({
+  url: process.env.VALKEY_URL || 'redis://localhost:6379',
+});
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const assignmentId = searchParams.get('assignmentId');
-
-  if (!assignmentId) {
-    return createErrorResponse(
-      { code: 'InvalidQuery', message: 'Missing assignmentId parameter' },
-      400
-    );
-  }
-
+// Connect to Valkey
+(async () => {
   try {
-    const client = await getRedisClient();
-    await client.ping(); // Test connection
+    await redisClient.connect();
+    console.log('Connected to Valkey');
+  } catch (err) {
+    console.error('Failed to connect to Valkey:', err);
+  }
+})();
 
-    const tasks = await getTasks(assignmentId);
-
-    const response = NextResponse.json({
-      data: tasks,
-    });
-
-    response.headers.set('Cache-Control', 'no-store, max-age=0');
-    return response;
-  } catch (error) {
-    logger.error({ error }, 'Failed to fetch tasks');
-
-    if (error instanceof Error) {
-      if (error.message.includes('Connection failed')) {
-        return createErrorResponse(
-          { code: 'ValkeyUnavailable', message: 'Failed to connect to Valkey' },
-          503
-        );
-      }
-    }
-
-    return createErrorResponse(
-      { code: 'InternalServerError', message: 'An unexpected error occurred' },
-      500
+export async function GET() {
+  try {
+    const tasks = await redisClient.hGetAll('tasks');
+    return NextResponse.json({ data: tasks });
+  } catch (err) {
+    console.error('Error fetching tasks:', err);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
     );
   }
 }
