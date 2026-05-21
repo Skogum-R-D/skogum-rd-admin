@@ -5,19 +5,23 @@
 :root {
   --background: 222 47% 5%;
   --foreground: 210 40% 98%;
-  --primary: 222 47% 11%;
+  --primary: 221 39% 11%;
   --primary-foreground: 210 40% 98%;
-  --muted: 222 47% 11%;
-  --muted-foreground: 215 16.3% 56.9%;
+  --secondary: 217 12% 63%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 217 12% 63%;
+  --muted-foreground: 215 12.2% 47.8%;
 }
 
 .dark {
   --background: 222 47% 5%;
   --foreground: 210 40% 98%;
-  --primary: 222 47% 11%;
-  --primary-foreground: 210 40% 98%;
-  --muted: 222 47% 11%;
-  --muted-foreground: 215 16.3% 56.9%;
+  --primary: 210 40% 98%;
+  --primary-foreground: 222 47% 5%;
+  --secondary: 217 12% 63%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 217 12% 63%;
+  --muted-foreground: 215 12.2% 47.8%;
 }
 
 .glassmorphism {
@@ -28,7 +32,8 @@
 }
 
 .gradient-text {
-  background: linear-gradient(90deg, #00d4ff, #0099cc);
+  background: linear-gradient(90deg, #00d4ff, #0099ff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
