@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Redis from "ioredis";
-import { randomUUID } from "crypto";
+import { v7 as uuidv7 } from "uuid";
 
 const redis = new Redis(process.env.VALKEY_URL || "redis://localhost:6379", {
   maxRetriesPerRequest: 3,
@@ -19,6 +19,13 @@ async function scanKeys(pattern: string): Promise<string[]> {
 }
 
 type TaskStatus = "pending" | "dispatched" | "in_progress" | "validating" | "completed" | "failed";
+
+type AssignmentEvent = {
+  id: string;
+  description: string;
+  created_at: string;
+  status: "pending";
+};
 
 function parseStatus(raw: string | undefined): TaskStatus {
   if (!raw) return "pending";
@@ -68,20 +75,6 @@ export async function GET() {
             } catch {}
           }
 
-          // Parse QA report if available
-          let qaReport = null;
-          if (data.qa_report) {
-            try {
-              qaReport = JSON.parse(data.qa_report);
-            } catch {}
-          }
-
-          // Determine failure reason
-          let failureReason = null;
-          if (data.status && (data.status.startsWith("failed") || data.status.startsWith("qa_failed"))) {
-            failureReason = data.status;
-          }
-
           return {
             id: assignmentId,
             planSummary: data.plan_summary || "",
@@ -89,8 +82,6 @@ export async function GET() {
             createdAt: data.created_at || "",
             latestActivity,
             tasks,
-            qaReport,
-            failureReason,
           };
         })
     );
@@ -107,36 +98,29 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const { description } = await request.json();
+export async function POST(req: Request) {
+  if (req.method !== 'POST') {
+    return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
+  }
 
-    if (!description || typeof description !== "string") {
-      return NextResponse.json({ error: "Description is required" }, { status: 400 });
+  try {
+    const body = await req.json();
+    if (typeof body.description !== 'string' || body.description.trim() === '') {
+      return NextResponse.json({ error: 'Invalid description' }, { status: 400 });
     }
 
-    const taskId = randomUUID();
-    const timestamp = new Date().toISOString();
-
-    const event = {
-      task_id: taskId,
-      type: "assignment",
-      assigned_to: "project_manager",
-      payload: { description },
+    const event: AssignmentEvent = {
+      id: uuidv7(),
+      description: body.description.trim(),
+      created_at: new Date().toISOString(),
       status: "pending",
-      timestamp,
     };
 
-    // Push to Valkey queue
     await redis.lpush("queue:project_manager", JSON.stringify(event));
-
-    return NextResponse.json(
-      { success: true, taskId, timestamp },
-      { status: 201 }
-    );
+    return NextResponse.json({ success: true, id: event.id }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to submit assignment" },
+      { error: "Failed to queue assignment" },
       { status: 500 }
     );
   }
