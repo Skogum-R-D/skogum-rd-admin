@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import AssignmentCard from "@/components/assignment-card";
+import { AssignmentCard } from "@/components/assignment-card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, CheckCircle } from "lucide-react";
+import { Loader2, RefreshCw, Send } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type TaskStatus = "pending" | "dispatched" | "in_progress" | "validating" | "completed" | "failed";
@@ -15,6 +15,7 @@ interface Task {
   description: string;
   dependsOn: string[];
   status: TaskStatus;
+  completedAt?: string | null;
 }
 
 interface Assignment {
@@ -24,13 +25,13 @@ interface Assignment {
   createdAt: string;
   latestActivity?: string | null;
   tasks: Task[];
-  qaReport: {
+  qaReport?: {
     verdict?: string;
     score?: number;
     issues?: string[];
     summary?: string;
   } | null;
-  failureReason: string | null;
+  failureReason?: string | null;
 }
 
 const AGENTS = [
@@ -79,13 +80,14 @@ function AgentStatusBar({ assignments }: { assignments: Assignment[] }) {
 
 export default function Dashboard() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "failed" | "completed">("all");
+  const [activeFilter, setActiveFilter] = useState("all");
 
   const fetchAssignments = async () => {
     try {
@@ -108,9 +110,34 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // Filter assignments based on active filter
+  useEffect(() => {
+    if (activeFilter === "all") {
+      setFilteredAssignments(assignments);
+    } else if (activeFilter === "active") {
+      setFilteredAssignments(
+        assignments.filter((a) => 
+          a.status === "in_progress" ||
+          a.tasks.some(t => t.status === "in_progress" || t.status === "validating" || t.status === "dispatched")
+        )
+      );
+    } else if (activeFilter === "failed") {
+      setFilteredAssignments(
+        assignments.filter((a) => 
+          a.status === "failed" || a.status.startsWith("failed")
+        )
+      );
+    } else if (activeFilter === "completed") {
+      setFilteredAssignments(
+        assignments.filter((a) => a.status === "completed")
+      );
+    }
+  }, [assignments, activeFilter]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!description.trim()) return;
+
     setSubmitting(true);
     try {
       const res = await fetch("/api/assignments", {
@@ -118,11 +145,12 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description }),
       });
+      
       if (res.ok) {
         setDescription("");
         setSubmitSuccess(true);
         setTimeout(() => setSubmitSuccess(false), 3000);
-        fetchAssignments();
+        fetchAssignments(); // Refresh the list
       }
     } catch {
       setError("Failed to submit assignment");
@@ -131,20 +159,16 @@ export default function Dashboard() {
     }
   };
 
-  const filteredAssignments = assignments.filter((a) => {
-    switch (activeFilter) {
-      case "active":
-        return a.status === "in_progress" || a.tasks.some((t) => ["in_progress", "validating", "dispatched"].includes(t.status));
-      case "failed":
-        return a.status === "failed" || a.tasks.some((t) => t.status === "failed");
-      case "completed":
-        return a.status === "completed";
-      default:
-        return true;
-    }
-  });
-
   const totalActive = assignments.filter((a) => a.status === "in_progress").length;
+  const filterCounts = {
+    all: assignments.length,
+    active: assignments.filter((a) => 
+      a.status === "in_progress" ||
+      a.tasks.some(t => t.status === "in_progress" || t.status === "validating" || t.status === "dispatched")
+    ).length,
+    failed: assignments.filter((a) => a.status === "failed" || a.status.startsWith("failed")).length,
+    completed: assignments.filter((a) => a.status === "completed").length,
+  };
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -168,85 +192,81 @@ export default function Dashboard() {
 
         {/* Assignment Submission Form */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glassmorphism rounded-xl p-6 mb-8"
+          className="mb-8 p-6 rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm"
         >
+          <h2 className="text-lg font-semibold text-white mb-4">Submit New Assignment</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-1">
-                New Assignment
-              </label>
               <textarea
-                id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe your assignment..."
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all min-h-[100px] resize-vertical"
+                className="w-full min-h-[100px] p-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
               />
             </div>
             <div className="flex justify-end">
               <Button type="submit" disabled={submitting || !description.trim()}>
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit"}
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                <span className="ml-2">Submit</span>
               </Button>
             </div>
+            <AnimatePresence>
+              {submitSuccess && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="p-3 rounded-lg bg-green-950/40 border border-green-800/30 text-green-300 text-sm"
+                >
+                  Assignment submitted successfully!
+                </motion.div>
+              )}
+            </AnimatePresence>
           </form>
-          <AnimatePresence>
-            {submitSuccess && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="mt-4 flex items-center gap-2 text-sm text-green-400"
-              >
-                <CheckCircle className="h-4 w-4" />
-                <span>Assignment submitted successfully!</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </motion.div>
-
-        {/* Agent status bar */}
-        {assignments.length > 0 && <AgentStatusBar assignments={assignments} />}
 
         {/* Filter Tabs */}
         <div className="mb-6">
-          <div className="flex items-center gap-2 border-b border-white/10">
-            {[
-              { key: "all" as const, label: "All" },
-              { key: "active" as const, label: "Active" },
-              { key: "failed" as const, label: "Failed" },
-              { key: "completed" as const, label: "Completed" },
-            ].map((tab) => {
-              const count = {
-                all: assignments.length,
-                active: assignments.filter((a) => a.status === "in_progress" || a.tasks.some((t) => ["in_progress", "validating", "dispatched"].includes(t.status))).length,
-                failed: assignments.filter((a) => a.status === "failed" || a.tasks.some((t) => t.status === "failed")).length,
-                completed: assignments.filter((a) => a.status === "completed").length,
-              }[tab.key];
-              return (
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex gap-1 rounded-lg bg-white/5 p-1">
+              {[
+                { id: "all", label: "All" },
+                { id: "active", label: "Active" },
+                { id: "failed", label: "Failed" },
+                { id: "completed", label: "Completed" },
+              ].map((tab) => (
                 <button
-                  key={tab.key}
-                  onClick={() => setActiveFilter(tab.key)}
-                  className={`relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors ${
-                    activeFilter === tab.key
-                      ? "text-blue-300"
+                  key={tab.id}
+                  onClick={() => setActiveFilter(tab.id)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors relative ${
+                    activeFilter === tab.id
+                      ? "text-blue-300 bg-blue-900/60"
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
                   {tab.label}
-                  <span className="text-xs text-gray-500">({count})</span>
-                  {activeFilter === tab.key && (
+                  <span className="ml-1 text-xs">({filterCounts[tab.id as keyof typeof filterCounts]})</span>
+                  {activeFilter === tab.id && (
                     <motion.div
-                      layoutId="filter-underline"
-                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"
+                      layoutId="activeTabIndicator"
+                      className="absolute inset-0 rounded-md bg-blue-800/20 border border-blue-600/30"
+                      initial={false}
                     />
                   )}
                 </button>
-              );
-            })}
+              ))}
+            </div>
           </div>
         </div>
+
+        {/* Agent status bar */}
+        {assignments.length > 0 && <AgentStatusBar assignments={assignments} />}
 
         {/* Content */}
         {error ? (
