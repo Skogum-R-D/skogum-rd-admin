@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Clock, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, ArrowRight, AlertTriangle } from "lucide-react";
 
 type TaskStatus = "pending" | "dispatched" | "in_progress" | "validating" | "completed" | "failed";
 
@@ -15,6 +15,13 @@ interface Task {
   completedAt?: string | null;
 }
 
+interface QAReport {
+  verdict: string;
+  score: number;
+  issues: string[];
+  summary: string;
+}
+
 interface Assignment {
   id: string;
   planSummary: string;
@@ -22,6 +29,8 @@ interface Assignment {
   createdAt: string;
   latestActivity?: string | null;
   tasks: Task[];
+  qaReport?: QAReport | null;
+  failureReason?: string | null;
 }
 
 const AGENT_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -92,8 +101,56 @@ function HandoffTimeline({ tasks }: { tasks: Task[] }) {
   );
 }
 
+function FailureDetail({ qaReport, failureReason }: { qaReport?: QAReport | null; failureReason?: string | null }) {
+  if (!qaReport && !failureReason) return null;
+
+  return (
+    <div className="mt-4 p-4 rounded-lg bg-red-950/30 border border-red-900/30">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="h-4 w-4 text-red-400" />
+        <h4 className="text-sm font-semibold text-red-300">Failure Details</h4>
+      </div>
+
+      {qaReport && (
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">QA Score</p>
+            <p className="text-lg font-bold text-white">{qaReport.score}/10</p>
+          </div>
+
+          {qaReport.issues && qaReport.issues.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Issues</p>
+              <ul className="mt-1 space-y-1 text-sm text-gray-300 list-disc list-inside">
+                {qaReport.issues.map((issue, index) => (
+                  <li key={index}>{issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {qaReport.summary && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Summary</p>
+              <p className="mt-1 text-sm text-gray-300 leading-relaxed">{qaReport.summary}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {failureReason && (
+        <div className="mt-3">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Failure Reason</p>
+          <p className="mt-1 text-sm text-red-300 font-mono">{failureReason}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AssignmentCard({ assignment }: { assignment: Assignment }) {
   const [showTimeline, setShowTimeline] = React.useState(false);
+  const [showFailureDetails, setShowFailureDetails] = React.useState(false);
 
   const completed = assignment.tasks.filter((t) => t.status === "completed").length;
   const total = assignment.tasks.length;
@@ -102,6 +159,8 @@ export function AssignmentCard({ assignment }: { assignment: Assignment }) {
     (t) => t.status === "in_progress" || t.status === "validating" || t.status === "dispatched"
   );
   const assignmentStatusMeta = STATUS_META[assignment.status as TaskStatus] || STATUS_META.pending;
+
+  const hasFailure = assignment.status === "failed" || assignment.tasks.some((t) => t.status === "failed");
 
   return (
     <motion.div
@@ -211,6 +270,31 @@ export function AssignmentCard({ assignment }: { assignment: Assignment }) {
                 className="overflow-hidden"
               >
                 <HandoffTimeline tasks={assignment.tasks} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
+
+      {/* Failure details toggle */}
+      {hasFailure && (
+        <>
+          <button
+            onClick={() => setShowFailureDetails((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
+          >
+            {showFailureDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            Show failure details
+          </button>
+          <AnimatePresence>
+            {showFailureDetails && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <FailureDetail qaReport={assignment.qaReport} failureReason={assignment.failureReason} />
               </motion.div>
             )}
           </AnimatePresence>

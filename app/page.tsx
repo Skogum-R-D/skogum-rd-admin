@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { AssignmentCard } from "@/components/assignment-card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Send } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 type TaskStatus = "pending" | "dispatched" | "in_progress" | "validating" | "completed" | "failed";
 
@@ -75,6 +76,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [activeFilter, setActiveFilter] = useState("all");
 
   const fetchAssignments = async () => {
     try {
@@ -91,11 +96,46 @@ export default function Dashboard() {
     }
   };
 
+  const handleSubmit = async () => {
+    if (!description.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description }),
+      });
+      if (res.ok) {
+        setDescription("");
+        setSubmitSuccess(true);
+        setTimeout(() => setSubmitSuccess(false), 3000);
+        fetchAssignments();
+      }
+    } catch {
+      setError("Failed to submit assignment");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     fetchAssignments();
     const interval = setInterval(fetchAssignments, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const filteredAssignments = assignments.filter((a) => {
+    switch (activeFilter) {
+      case "active":
+        return a.status === "in_progress" || a.tasks.some((t) => ["in_progress", "validating", "dispatched"].includes(t.status));
+      case "failed":
+        return a.status === "failed" || a.tasks.some((t) => t.status === "failed");
+      case "completed":
+        return a.status === "completed";
+      default:
+        return true;
+    }
+  });
 
   const totalActive = assignments.filter((a) => a.status === "in_progress").length;
 
@@ -119,6 +159,80 @@ export default function Dashboard() {
           </Button>
         </div>
 
+        {/* Assignment Submission Form */}
+        <div className="mb-8">
+          <div className="flex gap-2">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe your assignment..."
+              className="flex-1 rounded-lg border border-white/20 bg-white/5 backdrop-blur-sm p-3 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none min-h-[100px]"
+              disabled={submitting}
+            />
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting || !description.trim()}
+              className="flex-shrink-0"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              <span className="ml-2">Submit</span>
+            </Button>
+          </div>
+          <AnimatePresence>
+            {submitSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mt-2 text-sm text-green-400 flex items-center gap-1"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                Assignment submitted successfully!
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="mb-6">
+          <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
+            {[
+              { id: "all", label: "All" },
+              { id: "active", label: "Active" },
+              { id: "failed", label: "Failed" },
+              { id: "completed", label: "Completed" },
+            ].map((tab) => {
+              const count = {
+                all: assignments.length,
+                active: assignments.filter((a) => a.status === "in_progress" || a.tasks.some((t) => ["in_progress", "validating", "dispatched"].includes(t.status))).length,
+                failed: assignments.filter((a) => a.status === "failed" || a.tasks.some((t) => t.status === "failed")).length,
+                completed: assignments.filter((a) => a.status === "completed").length,
+              }[tab.id];
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveFilter(tab.id)}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-colors relative ${
+                    activeFilter === tab.id
+                      ? "text-blue-300 bg-blue-900/50"
+                      : "text-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  {activeFilter === tab.id && (
+                    <motion.div
+                      layoutId="activeTabIndicator"
+                      className="absolute inset-0 bg-blue-800/30 rounded-md -z-10"
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                  {tab.label}
+                  <span className="text-xs font-mono text-gray-500">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Agent status bar */}
         {assignments.length > 0 && <AgentStatusBar assignments={assignments} />}
 
@@ -129,11 +243,11 @@ export default function Dashboard() {
           <div className="flex justify-center items-center h-64">
             <Loader2 className="h-8 w-8 animate-spin text-gray-600" />
           </div>
-        ) : assignments.length === 0 ? (
+        ) : filteredAssignments.length === 0 ? (
           <div className="text-center py-12 text-gray-600 text-sm">No assignments found.</div>
         ) : (
           <div className="space-y-4">
-            {assignments.map((a) => (
+            {filteredAssignments.map((a) => (
               <AssignmentCard key={a.id} assignment={a} />
             ))}
           </div>
