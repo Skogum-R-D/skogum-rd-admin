@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Redis from "ioredis";
-import { v7 as uuidv7 } from "uuid";
+import { v4 as uuidv4 } from "uuid";
 
 const redis = new Redis(process.env.VALKEY_URL || "redis://localhost:6379", {
   maxRetriesPerRequest: 3,
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
     }
 
     const event: AssignmentEvent = {
-      id: uuidv7(),
+      id: uuidv4(),
       description: body.description.trim(),
       created_at: new Date().toISOString(),
       status: "pending",
