@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Clock, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, ArrowRight, AlertTriangle } from "lucide-react";
 
 type TaskStatus = "pending" | "dispatched" | "in_progress" | "validating" | "completed" | "failed";
 
@@ -22,6 +22,13 @@ interface Assignment {
   createdAt: string;
   latestActivity?: string | null;
   tasks: Task[];
+  qaReport?: {
+    verdict?: string;
+    score?: number;
+    issues?: string[];
+    summary?: string;
+  } | null;
+  failureReason?: string | null;
 }
 
 const AGENT_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -92,8 +99,68 @@ function HandoffTimeline({ tasks }: { tasks: Task[] }) {
   );
 }
 
+function FailureDetailPanel({ qaReport, failureReason }: { qaReport?: Assignment["qaReport"]; failureReason?: string | null }) {
+  if (!qaReport && !failureReason) return null;
+
+  return (
+    <div className="mt-4 p-4 rounded-lg bg-red-950/30 border border-red-900/30">
+      <div className="flex items-start gap-2 mb-3">
+        <AlertTriangle className="h-4 w-4 text-red-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <h4 className="text-sm font-semibold text-red-300">Failure Details</h4>
+          {failureReason && (
+            <p className="text-xs text-red-200 mt-1">
+              <span className="font-mono font-medium">Reason:</span> {failureReason}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {qaReport && (
+        <div className="space-y-3 text-sm">
+          {qaReport.score !== undefined && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">QA Score</p>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-white">{qaReport.score}</span>
+                <span className="text-gray-400">/ 10</span>
+              </div>
+            </div>
+          )}
+
+          {qaReport.issues && qaReport.issues.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Issues Found</p>
+              <ul className="space-y-1.5 text-xs text-red-200 list-disc list-inside">
+                {qaReport.issues.map((issue, i) => (
+                  <li key={i}>{issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {qaReport.summary && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Summary</p>
+              <p className="text-xs text-gray-300 leading-relaxed">{qaReport.summary}</p>
+            </div>
+          )}
+
+          {qaReport.verdict && (
+            <div className="pt-3 border-t border-red-800/30">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Verdict</p>
+              <p className="font-medium text-red-200">{qaReport.verdict}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AssignmentCard({ assignment }: { assignment: Assignment }) {
   const [showTimeline, setShowTimeline] = React.useState(false);
+  const [showFailureDetails, setShowFailureDetails] = React.useState(false);
 
   const completed = assignment.tasks.filter((t) => t.status === "completed").length;
   const total = assignment.tasks.length;
@@ -102,6 +169,11 @@ export function AssignmentCard({ assignment }: { assignment: Assignment }) {
     (t) => t.status === "in_progress" || t.status === "validating" || t.status === "dispatched"
   );
   const assignmentStatusMeta = STATUS_META[assignment.status as TaskStatus] || STATUS_META.pending;
+
+  // Check if this assignment has failures
+  const hasFailure = assignment.status === "failed" || 
+                     assignment.tasks.some(t => t.status === "failed") ||
+                     assignment.failureReason;
 
   return (
     <motion.div
@@ -192,6 +264,31 @@ export function AssignmentCard({ assignment }: { assignment: Assignment }) {
         ))}
       </div>
 
+      {/* Failure details toggle */}
+      {hasFailure && (
+        <>
+          <button
+            onClick={() => setShowFailureDetails((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
+          >
+            {showFailureDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {showFailureDetails ? "Hide" : "Show"} failure details
+          </button>
+          <AnimatePresence>
+            {showFailureDetails && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <FailureDetailPanel qaReport={assignment.qaReport} failureReason={assignment.failureReason} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
+
       {/* Timeline toggle */}
       {assignment.tasks.some((t) => t.completedAt) && (
         <>
@@ -200,7 +297,7 @@ export function AssignmentCard({ assignment }: { assignment: Assignment }) {
             className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-400 transition-colors"
           >
             {showTimeline ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            Agent handoff timeline
+            {showTimeline ? "Hide" : "Show"} agent handoff timeline
           </button>
           <AnimatePresence>
             {showTimeline && (
