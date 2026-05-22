@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Redis from "ioredis";
+import { randomUUID } from "crypto";
 
 const redis = new Redis(process.env.VALKEY_URL || "redis://localhost:6379", {
   maxRetriesPerRequest: 3,
@@ -67,6 +68,20 @@ export async function GET() {
             } catch {}
           }
 
+          // Parse QA report if available
+          let qaReport = null;
+          if (data.qa_report) {
+            try {
+              qaReport = JSON.parse(data.qa_report);
+            } catch {}
+          }
+
+          // Determine failure reason
+          let failureReason = null;
+          if (data.status && (data.status.startsWith("failed") || data.status.startsWith("qa_failed"))) {
+            failureReason = data.status;
+          }
+
           return {
             id: assignmentId,
             planSummary: data.plan_summary || "",
@@ -74,6 +89,8 @@ export async function GET() {
             createdAt: data.created_at || "",
             latestActivity,
             tasks,
+            qaReport,
+            failureReason,
           };
         })
     );
@@ -87,5 +104,40 @@ export async function GET() {
     return NextResponse.json({ assignments });
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch assignments" }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const { description } = await request.json();
+
+    if (!description || typeof description !== "string") {
+      return NextResponse.json({ error: "Description is required" }, { status: 400 });
+    }
+
+    const taskId = randomUUID();
+    const timestamp = new Date().toISOString();
+
+    const event = {
+      task_id: taskId,
+      type: "assignment",
+      assigned_to: "project_manager",
+      payload: { description },
+      status: "pending",
+      timestamp,
+    };
+
+    // Push to Valkey queue
+    await redis.lpush("queue:project_manager", JSON.stringify(event));
+
+    return NextResponse.json(
+      { success: true, taskId, timestamp },
+      { status: 201 }
+    );
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to submit assignment" },
+      { status: 500 }
+    );
   }
 }
