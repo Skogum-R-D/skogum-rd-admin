@@ -19,7 +19,8 @@
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.3.0",
     "tailwindcss-animate": "^1.0.7",
-    "ioredis": "^5.4.1"
+    "ioredis": "^5.4.1",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.2",
