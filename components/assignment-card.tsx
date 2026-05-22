@@ -15,6 +15,13 @@ interface Task {
   completedAt?: string | null;
 }
 
+interface QAReport {
+  verdict: string;
+  score: number;
+  issues: string[];
+  summary: string;
+}
+
 interface Assignment {
   id: string;
   planSummary: string;
@@ -22,12 +29,7 @@ interface Assignment {
   createdAt: string;
   latestActivity?: string | null;
   tasks: Task[];
-  qaReport?: {
-    verdict?: string;
-    score?: number;
-    issues?: string[];
-    summary?: string;
-  } | null;
+  qaReport?: QAReport | null;
   failureReason?: string | null;
 }
 
@@ -99,38 +101,29 @@ function HandoffTimeline({ tasks }: { tasks: Task[] }) {
   );
 }
 
-function FailureDetailPanel({ qaReport, failureReason }: { qaReport?: Assignment["qaReport"]; failureReason?: string | null }) {
+function FailureDetail({ qaReport, failureReason }: { qaReport?: QAReport | null; failureReason?: string | null }) {
   if (!qaReport && !failureReason) return null;
 
   return (
     <div className="mt-4 p-4 rounded-lg bg-red-950/30 border border-red-900/30">
-      <div className="flex items-start gap-2 mb-3">
-        <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
-        <div>
-          <h4 className="text-sm font-semibold text-red-300">Failure Details</h4>
-          {failureReason && (
-            <p className="text-xs text-red-200 mt-1">Reason: <span className="font-mono">{failureReason}</span></p>
-          )}
-        </div>
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="h-4 w-4 text-red-400" />
+        <h4 className="text-sm font-semibold text-red-300">Failure Details</h4>
       </div>
 
       {qaReport && (
-        <div className="space-y-3 text-sm">
-          {qaReport.score !== undefined && (
-            <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">QA Score</p>
-              <p className={`text-2xl font-bold ${qaReport.score < 5 ? "text-red-300" : qaReport.score < 8 ? "text-yellow-300" : "text-green-300"}`}>
-                {qaReport.score}/10
-              </p>
-            </div>
-          )}
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">QA Score</p>
+            <p className="text-lg font-bold text-white">{qaReport.score}/10</p>
+          </div>
 
           {qaReport.issues && qaReport.issues.length > 0 && (
             <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Issues Found</p>
-              <ul className="space-y-1.5 text-xs text-red-200 list-disc list-inside">
-                {qaReport.issues.map((issue, i) => (
-                  <li key={i}>{issue}</li>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Issues</p>
+              <ul className="mt-1 space-y-1 text-sm text-gray-300 list-disc list-inside">
+                {qaReport.issues.map((issue, index) => (
+                  <li key={index}>{issue}</li>
                 ))}
               </ul>
             </div>
@@ -138,19 +131,17 @@ function FailureDetailPanel({ qaReport, failureReason }: { qaReport?: Assignment
 
           {qaReport.summary && (
             <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Summary</p>
-              <p className="text-xs text-gray-300 leading-relaxed">{qaReport.summary}</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Summary</p>
+              <p className="mt-1 text-sm text-gray-300 leading-relaxed">{qaReport.summary}</p>
             </div>
           )}
+        </div>
+      )}
 
-          {qaReport.verdict && (
-            <div className="pt-3 border-t border-red-900/20">
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Verdict</p>
-              <p className={`text-sm font-medium ${qaReport.verdict.toLowerCase().includes("fail") ? "text-red-300" : "text-yellow-300"}`}>
-                {qaReport.verdict}
-              </p>
-            </div>
-          )}
+      {failureReason && (
+        <div className="mt-3">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Failure Reason</p>
+          <p className="mt-1 text-sm text-red-300 font-mono">{failureReason}</p>
         </div>
       )}
     </div>
@@ -169,10 +160,7 @@ export function AssignmentCard({ assignment }: { assignment: Assignment }) {
   );
   const assignmentStatusMeta = STATUS_META[assignment.status as TaskStatus] || STATUS_META.pending;
 
-  // Check if this assignment has any failures
-  const hasFailure = assignment.status === "failed" || 
-                     assignment.status.startsWith("failed") ||
-                     assignment.tasks.some(t => t.status === "failed");
+  const hasFailure = assignment.status === "failed" || assignment.tasks.some((t) => t.status === "failed");
 
   return (
     <motion.div
@@ -263,31 +251,6 @@ export function AssignmentCard({ assignment }: { assignment: Assignment }) {
         ))}
       </div>
 
-      {/* Failure details toggle */}
-      {hasFailure && (
-        <>
-          <button
-            onClick={() => setShowFailureDetails((v) => !v)}
-            className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
-          >
-            {showFailureDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            View failure details
-          </button>
-          <AnimatePresence>
-            {showFailureDetails && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <FailureDetailPanel qaReport={assignment.qaReport} failureReason={assignment.failureReason} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </>
-      )}
-
       {/* Timeline toggle */}
       {assignment.tasks.some((t) => t.completedAt) && (
         <>
@@ -307,6 +270,31 @@ export function AssignmentCard({ assignment }: { assignment: Assignment }) {
                 className="overflow-hidden"
               >
                 <HandoffTimeline tasks={assignment.tasks} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
+
+      {/* Failure details toggle */}
+      {hasFailure && (
+        <>
+          <button
+            onClick={() => setShowFailureDetails((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
+          >
+            {showFailureDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            Show failure details
+          </button>
+          <AnimatePresence>
+            {showFailureDetails && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <FailureDetail qaReport={assignment.qaReport} failureReason={assignment.failureReason} />
               </motion.div>
             )}
           </AnimatePresence>
