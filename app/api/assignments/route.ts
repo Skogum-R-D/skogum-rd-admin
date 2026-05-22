@@ -24,7 +24,7 @@ async function scanKeys(pattern: string): Promise<string[]> {
 }
 
 // Helper function to safely parse JSON
-def safeJsonParse(jsonString: string, defaultValue: any = null) {
+function safeJsonParse(jsonString: string, defaultValue: any = null) {
   try {
     return JSON.parse(jsonString);
   } catch (e) {
