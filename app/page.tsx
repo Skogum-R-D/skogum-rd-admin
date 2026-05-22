@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { AssignmentCard } from "@/components/assignment-card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 type TaskStatus = "pending" | "dispatched" | "in_progress" | "validating" | "completed" | "failed";
 
@@ -75,6 +76,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "failed" | "completed">("all");
 
   const fetchAssignments = async () => {
     try {
@@ -96,6 +101,42 @@ export default function Dashboard() {
     const interval = setInterval(fetchAssignments, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!description.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description }),
+      });
+      if (res.ok) {
+        setDescription("");
+        setSubmitSuccess(true);
+        setTimeout(() => setSubmitSuccess(false), 3000);
+        fetchAssignments();
+      }
+    } catch {
+      setError("Failed to submit assignment");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredAssignments = assignments.filter((a) => {
+    switch (activeFilter) {
+      case "active":
+        return a.status === "in_progress" || a.tasks.some((t) => ["in_progress", "validating", "dispatched"].includes(t.status));
+      case "failed":
+        return a.status === "failed" || a.tasks.some((t) => t.status === "failed");
+      case "completed":
+        return a.status === "completed";
+      default:
+        return true;
+    }
+  });
 
   const totalActive = assignments.filter((a) => a.status === "in_progress").length;
 
@@ -119,8 +160,87 @@ export default function Dashboard() {
           </Button>
         </div>
 
+        {/* Assignment Submission Form */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glassmorphism rounded-xl p-6 mb-8"
+        >
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-1">
+                New Assignment
+              </label>
+              <textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe your assignment..."
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all min-h-[100px] resize-vertical"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={submitting || !description.trim()}>
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit"}
+              </Button>
+            </div>
+          </form>
+          <AnimatePresence>
+            {submitSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mt-4 flex items-center gap-2 text-sm text-green-400"
+              >
+                <CheckCircle className="h-4 w-4" />
+                <span>Assignment submitted successfully!</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+
         {/* Agent status bar */}
         {assignments.length > 0 && <AgentStatusBar assignments={assignments} />}
+
+        {/* Filter Tabs */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 border-b border-white/10">
+            {[
+              { key: "all" as const, label: "All" },
+              { key: "active" as const, label: "Active" },
+              { key: "failed" as const, label: "Failed" },
+              { key: "completed" as const, label: "Completed" },
+            ].map((tab) => {
+              const count = {
+                all: assignments.length,
+                active: assignments.filter((a) => a.status === "in_progress" || a.tasks.some((t) => ["in_progress", "validating", "dispatched"].includes(t.status))).length,
+                failed: assignments.filter((a) => a.status === "failed" || a.tasks.some((t) => t.status === "failed")).length,
+                completed: assignments.filter((a) => a.status === "completed").length,
+              }[tab.key];
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveFilter(tab.key)}
+                  className={`relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors ${
+                    activeFilter === tab.key
+                      ? "text-blue-300"
+                      : "text-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  {tab.label}
+                  <span className="text-xs text-gray-500">({count})</span>
+                  {activeFilter === tab.key && (
+                    <motion.div
+                      layoutId="filter-underline"
+                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Content */}
         {error ? (
@@ -129,11 +249,11 @@ export default function Dashboard() {
           <div className="flex justify-center items-center h-64">
             <Loader2 className="h-8 w-8 animate-spin text-gray-600" />
           </div>
-        ) : assignments.length === 0 ? (
+        ) : filteredAssignments.length === 0 ? (
           <div className="text-center py-12 text-gray-600 text-sm">No assignments found.</div>
         ) : (
           <div className="space-y-4">
-            {assignments.map((a) => (
+            {filteredAssignments.map((a) => (
               <AssignmentCard key={a.id} assignment={a} />
             ))}
           </div>
