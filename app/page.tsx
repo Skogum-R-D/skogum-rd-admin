@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AssignmentCard } from "@/components/assignment-card";
+import AssignmentCard from "@/components/assignment-card";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw, CheckCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,7 +15,6 @@ interface Task {
   description: string;
   dependsOn: string[];
   status: TaskStatus;
-  completedAt?: string | null;
 }
 
 interface Assignment {
@@ -25,6 +24,13 @@ interface Assignment {
   createdAt: string;
   latestActivity?: string | null;
   tasks: Task[];
+  qaReport: {
+    verdict?: string;
+    score?: number;
+    issues?: string[];
+    summary?: string;
+  } | null;
+  failureReason: string | null;
 }
 
 const AGENTS = [
